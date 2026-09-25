@@ -9,12 +9,12 @@ import com.demo.upimesh.model.PaymentInstruction;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.security.MessageDigest;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.UUID;
 
 /**
@@ -26,18 +26,25 @@ import java.util.UUID;
 public class DemoService {
 
     private static final Logger log = LoggerFactory.getLogger(DemoService.class);
+    private static final HexFormat HEX = HexFormat.of();
 
-    @Autowired private AccountRepository accounts;
-    @Autowired private HybridCryptoService crypto;
-    @Autowired private ServerKeyHolder serverKey;
+    private final AccountRepository accounts;
+    private final HybridCryptoService crypto;
+    private final ServerKeyHolder serverKey;
+
+    public DemoService(AccountRepository accounts, HybridCryptoService crypto, ServerKeyHolder serverKey) {
+        this.accounts = accounts;
+        this.crypto = crypto;
+        this.serverKey = serverKey;
+    }
 
     @PostConstruct
     public void seedAccounts() {
         if (accounts.count() == 0) {
-            accounts.save(new Account("alice@demo", "Alice",   new BigDecimal("5000.00")));
-            accounts.save(new Account("bob@demo",   "Bob",     new BigDecimal("1000.00")));
-            accounts.save(new Account("carol@demo", "Carol",   new BigDecimal("2500.00")));
-            accounts.save(new Account("dave@demo",  "Dave",    new BigDecimal("500.00")));
+            accounts.save(new Account("alice@demo", "Alice Sharma",  new BigDecimal("5000.00")));
+            accounts.save(new Account("bob@demo",   "Bob Patel",     new BigDecimal("1000.00")));
+            accounts.save(new Account("carol@demo", "Carol Mehta",   new BigDecimal("2500.00")));
+            accounts.save(new Account("dave@demo",  "Dave Gupta",    new BigDecimal("500.00")));
             log.info("Seeded 4 demo accounts");
         }
     }
@@ -76,8 +83,6 @@ public class DemoService {
     private String sha256Hex(String input) throws Exception {
         MessageDigest md = MessageDigest.getInstance("SHA-256");
         byte[] hash = md.digest(input.getBytes());
-        StringBuilder hex = new StringBuilder();
-        for (byte b : hash) hex.append(String.format("%02x", b));
-        return hex.toString();
+        return HEX.formatHex(hash);
     }
 }

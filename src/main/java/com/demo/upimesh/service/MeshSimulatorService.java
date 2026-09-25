@@ -27,16 +27,17 @@ public class MeshSimulatorService {
     private final Map<String, VirtualDevice> devices = new ConcurrentHashMap<>();
 
     public MeshSimulatorService() {
-        // Default scenario: 4 offline phones in a basement, 1 phone outside with 4G
         seedDefaultDevices();
     }
 
     private void seedDefaultDevices() {
-        devices.put("phone-alice",   new VirtualDevice("phone-alice",   false));
+        // 4 offline phones + 2 bridge nodes for better idempotency demo
+        devices.put("phone-alice",    new VirtualDevice("phone-alice",    false));
         devices.put("phone-stranger1", new VirtualDevice("phone-stranger1", false));
         devices.put("phone-stranger2", new VirtualDevice("phone-stranger2", false));
         devices.put("phone-stranger3", new VirtualDevice("phone-stranger3", false));
-        devices.put("phone-bridge",  new VirtualDevice("phone-bridge",  true));
+        devices.put("phone-bridge-1", new VirtualDevice("phone-bridge-1", true));
+        devices.put("phone-bridge-2", new VirtualDevice("phone-bridge-2", true));
     }
 
     public Collection<VirtualDevice> getDevices() {

@@ -3,8 +3,8 @@ package com.demo.upimesh.controller;
 import com.demo.upimesh.crypto.ServerKeyHolder;
 import com.demo.upimesh.model.*;
 import com.demo.upimesh.service.*;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -23,13 +23,28 @@ import java.util.*;
 @RequestMapping("/api")
 public class ApiController {
 
-    @Autowired private ServerKeyHolder serverKey;
-    @Autowired private DemoService demo;
-    @Autowired private MeshSimulatorService mesh;
-    @Autowired private BridgeIngestionService bridge;
-    @Autowired private AccountRepository accountRepo;
-    @Autowired private TransactionRepository txRepo;
-    @Autowired private IdempotencyService idempotency;
+    private final ServerKeyHolder serverKey;
+    private final DemoService demo;
+    private final MeshSimulatorService mesh;
+    private final BridgeIngestionService bridge;
+    private final AccountRepository accountRepo;
+    private final TransactionRepository txRepo;
+    private final IdempotencyService idempotency;
+    private final SimpMessagingTemplate ws;
+
+    public ApiController(ServerKeyHolder serverKey, DemoService demo, MeshSimulatorService mesh,
+                         BridgeIngestionService bridge, AccountRepository accountRepo,
+                         TransactionRepository txRepo, IdempotencyService idempotency,
+                         SimpMessagingTemplate ws) {
+        this.serverKey = serverKey;
+        this.demo = demo;
+        this.mesh = mesh;
+        this.bridge = bridge;
+        this.accountRepo = accountRepo;
+        this.txRepo = txRepo;
+        this.idempotency = idempotency;
+        this.ws = ws;
+    }
 
     // ------------------------------------------------------------------ key
 
@@ -57,12 +72,17 @@ public class ApiController {
         String startDevice = req.startDevice == null ? "phone-alice" : req.startDevice;
         mesh.inject(startDevice, packet);
 
-        return ResponseEntity.ok(Map.of(
+        Map<String, Object> result = Map.of(
                 "packetId", packet.getPacketId(),
                 "ciphertextPreview", packet.getCiphertext().substring(0, 64) + "...",
                 "ttl", packet.getTtl(),
                 "injectedAt", startDevice
-        ));
+        );
+
+        // Push real-time update to dashboard
+        pushUpdate("inject", result);
+
+        return ResponseEntity.ok(result);
     }
 
     public static class DemoSendRequest {
@@ -98,10 +118,12 @@ public class ApiController {
     @PostMapping("/mesh/gossip")
     public Map<String, Object> meshGossip() {
         MeshSimulatorService.GossipResult r = mesh.gossipOnce();
-        return Map.of(
+        Map<String, Object> result = Map.of(
                 "transfers", r.transfers(),
                 "deviceCounts", r.deviceCounts()
         );
+        pushUpdate("gossip", result);
+        return result;
     }
 
     /**
@@ -132,16 +154,19 @@ public class ApiController {
             }
         });
 
-        return Map.of(
+        Map<String, Object> result = Map.of(
                 "uploadsAttempted", uploads.size(),
                 "results", results
         );
+        pushUpdate("flush", result);
+        return result;
     }
 
     @PostMapping("/mesh/reset")
     public Map<String, Object> meshReset() {
         mesh.resetMesh();
         idempotency.clear();
+        pushUpdate("reset", Map.of());
         return Map.of("status", "mesh and idempotency cache cleared");
     }
 
@@ -172,5 +197,43 @@ public class ApiController {
     @GetMapping("/transactions")
     public List<Transaction> listTransactions() {
         return txRepo.findTop20ByOrderByIdDesc();
+    }
+
+    // ------------------------------------------------------------- stats
+
+    @GetMapping("/stats")
+    public Map<String, Object> stats() {
+        List<Transaction> all = txRepo.findAll();
+        long settled = all.stream().filter(t -> t.getStatus() == Transaction.Status.SETTLED).count();
+        long rejected = all.stream().filter(t -> t.getStatus() == Transaction.Status.REJECTED).count();
+        BigDecimal totalVolume = all.stream()
+                .filter(t -> t.getStatus() == Transaction.Status.SETTLED)
+                .map(Transaction::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        double avgHops = all.stream()
+                .filter(t -> t.getStatus() == Transaction.Status.SETTLED)
+                .mapToInt(Transaction::getHopCount)
+                .average()
+                .orElse(0.0);
+
+        return Map.of(
+                "totalSettled", settled,
+                "totalRejected", rejected,
+                "totalVolume", totalVolume,
+                "avgHops", Math.round(avgHops * 10.0) / 10.0,
+                "idempotencyCacheSize", idempotency.size(),
+                "meshDevices", mesh.getDevices().size(),
+                "bridgeNodes", mesh.getDevices().stream().filter(VirtualDevice::hasInternet).count()
+        );
+    }
+
+    // ------------------------------------------------------------- WebSocket push
+
+    private void pushUpdate(String event, Map<String, Object> data) {
+        ws.convertAndSend("/topic/updates", Map.of(
+                "event", event,
+                "data", data,
+                "timestamp", System.currentTimeMillis()
+        ));
     }
 }

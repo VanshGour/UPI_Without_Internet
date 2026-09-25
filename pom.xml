@@ -57,6 +57,18 @@
             <artifactId>jackson-databind</artifactId>
         </dependency>
 
+        <!-- WebSocket for real-time dashboard updates -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+
+        <!-- Actuator for health checks and metrics -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <!-- Test scope -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -2,7 +2,6 @@ package com.demo.upimesh.crypto;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.demo.upimesh.model.PaymentInstruction;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.Cipher;
@@ -18,6 +17,7 @@ import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.spec.MGF1ParameterSpec;
 import java.util.Base64;
+import java.util.HexFormat;
 
 /**
  * Hybrid encryption — the same pattern used by TLS, PGP, Signal, etc.
@@ -45,12 +45,15 @@ public class HybridCryptoService {
     private static final int GCM_IV_BYTES = 12;
     private static final int GCM_TAG_BITS = 128;
     private static final int RSA_ENCRYPTED_KEY_BYTES = 256; // for 2048-bit RSA
+    private static final HexFormat HEX = HexFormat.of();
 
     private final SecureRandom rng = new SecureRandom();
     private final ObjectMapper json = new ObjectMapper();
+    private final ServerKeyHolder serverKey;
 
-    @Autowired
-    private ServerKeyHolder serverKey;
+    public HybridCryptoService(ServerKeyHolder serverKey) {
+        this.serverKey = serverKey;
+    }
 
     /**
      * Encrypt a payment instruction with the server's public key.
@@ -131,14 +134,12 @@ public class HybridCryptoService {
      * Why ciphertext and not packetId? Because intermediates can rewrite packetId
      * but cannot forge a valid ciphertext for a different payload. Two delivered
      * copies of the same packet have identical ciphertexts, hence identical hashes.
+     *
+     * Optimized: uses Java 17's HexFormat instead of manual StringBuilder loop.
      */
     public String hashCiphertext(String base64Ciphertext) throws Exception {
         MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
         byte[] hash = sha256.digest(base64Ciphertext.getBytes());
-        StringBuilder hex = new StringBuilder();
-        for (byte b : hash) {
-            hex.append(String.format("%02x", b));
-        }
-        return hex.toString();
+        return HEX.formatHex(hash);
     }
 }
